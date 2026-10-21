@@ -1,0 +1,7 @@
+[project]
+name = "fixture-python-marker"
+version = "0.1.0"
+description = "fixture for firstday python env detection"
+
+[tool.uv]
+dev-dependencies = []

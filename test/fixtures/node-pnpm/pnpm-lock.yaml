@@ -1,0 +1,10 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+devDependencies:
+  typescript:
+    specifier: ^5.0.0
+    version: 5.4.5

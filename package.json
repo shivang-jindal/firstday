@@ -1,0 +1,22 @@
+{
+  "name": "firstday",
+  "version": "0.1.0",
+  "description": "clone to first merged PR in 60 seconds — v0: detect, verify, map, match, tour",
+  "type": "module",
+  "bin": {
+    "firstday": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "open-source",
+    "onboarding",
+    "good-first-issue",
+    "cli"
+  ],
+  "license": "Apache-2.0"
+}
