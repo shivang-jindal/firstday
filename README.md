@@ -147,12 +147,13 @@ node src/cli.js <path>          # dry-run: plan + handoff card, writes nothing
 node src/cli.js <path> --apply  # writes <path>/.firstday/ (state.json, TOUR.md, plan.json)
 node src/cli.js <path> --json   # machine-readable report
 node src/cli.js <path> --resume # skip stages recorded ok; rerun the failed one
-node --test test/               # 132 tests
+node src/cli.js status <path>   # read-only stage table for a previous run
+node --test test/               # 138 tests
 ```
 
 ## v0 status
 
-**Shipped, covered by 132 passing tests:**
+**Shipped, covered by 138 passing tests:**
 
 - **Detect**: a toolchain matrix from pure filesystem signals - JS package
   manager (multiple lockfiles detected as ambiguous instead of guessed),
@@ -180,8 +181,12 @@ node --test test/               # 132 tests
 - **Output**: a handoff card with real durations and honest
   UNVERIFIED/flaky states, `--json`, and exit codes
   0 ready / 1 warnings / 2 usage / 3 stage failure
+- **`status <path>`**: a strictly read-only stage table over a previous run's
+  `.firstday/state.json` - per-stage status, duration, and timestamp; a failed
+  stage prints the exact `--resume` command; no state at all is an honest
+  exit 3, never a fresh run
 
 **Deferred (v1+, documented, not silently dropped):** the mutation half (fresh
-clone/worktree, branch + scaffold + first commit), the
-`adapters`/`status`/`onboard` subcommands, LLM tour narration (v0 is fully
+clone/worktree, branch + scaffold + first commit), the `adapters`/`onboard`
+subcommands, LLM tour narration (v0 is fully
 deterministic and model-optional), and remote-repo (URL) input.

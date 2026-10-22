@@ -11,19 +11,27 @@ export function createState(repo) {
 }
 
 /**
- * record(state, stage, fields, { now, startedAt }) — fills status/ms.
- * Uses the injected clock so tests get deterministic durations.
+ * record(state, stage, fields, { now, startedAt }) — fills status/ms/at.
+ * Uses the injected clock so tests get deterministic durations + timestamps.
  */
 export function record(state, stage, fields, { now = () => Date.now(), startedAt } = {}) {
   const ms = typeof startedAt === 'number' ? now() - startedAt : fields.ms ?? 0;
-  state.stages[stage] = { status: 'ok', ...fields, ms };
+  state.stages[stage] = { status: 'ok', ...fields, ms, at: isoAt(now) };
   return state.stages[stage];
 }
 
 export function recordFailure(state, stage, fields, { now = () => Date.now(), startedAt } = {}) {
   const ms = typeof startedAt === 'number' ? now() - startedAt : fields.ms ?? 0;
-  state.stages[stage] = { status: 'failed', ...fields, ms };
+  state.stages[stage] = { status: 'failed', ...fields, ms, at: isoAt(now) };
   return state.stages[stage];
+}
+
+function isoAt(now) {
+  try {
+    return new Date(now()).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 export function shouldSkip(prevState, stage) {
