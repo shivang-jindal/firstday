@@ -103,12 +103,37 @@ export function writeRadarStub(dir, mode = 'ok') {
     body = `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({results:[]}));\n`;
   } else {
     body = `#!/usr/bin/env node\nconst fs=require('node:fs');\n`
-      + `const fixture=process.env.FIRSTDAY_RADAR_FIXTURE;\nlet results;\n`
+      + `const i=process.argv.indexOf('--fixture');\nconst fixture=i>=0?process.argv[i+1]:null;\nlet results;\n`
       + `if(fixture){results=JSON.parse(fs.readFileSync(fixture,'utf8'));}\n`
       + `else{results=[{number:42,title:'Fix greeting bug',url:'https://example.test/42',score:0.91,reasons:['mentions greet','small diff']},{number:7,title:'Add tests',url:'https://example.test/7',score:0.55,reasons:['docs']}];}\n`
       + `process.stdout.write(JSON.stringify({results}));\n`;
   }
   return writeStub(file, body);
+}
+
+/**
+ * exec for radar-integration tests: answers match.js's `git remote get-url
+ * origin` probe with a canned slug (fixture dirs aren't git repos), and runs
+ * every other command (the radar scan) through the real spawner so the stub
+ * CLI is actually executed.
+ */
+export function radarExec(slug = 'acme/widgets') {
+  const real = createRunner();
+  return (cmd, opts) => {
+    if (cmd.includes('git remote get-url origin')) {
+      return Promise.resolve({
+        command: cmd,
+        code: 0,
+        signal: null,
+        stdout: `git@github.com:${slug}.git\n`,
+        stderr: '',
+        timedOut: false,
+        ms: 1,
+        error: null,
+      });
+    }
+    return real(cmd, opts);
+  };
 }
 
 export { fakeRunner, createRunner, fingerprintTree };

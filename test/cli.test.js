@@ -35,7 +35,16 @@ function deps(extra = {}) {
 function routedExec(scanMarker) {
   const fake = green();
   const real = createRunner();
-  return (cmd, opts) => (cmd.includes(scanMarker) ? real(cmd, opts) : fake(cmd, opts));
+  return (cmd, opts) => {
+    // match.js probes the git origin remote before invoking radar
+    if (cmd.includes('git remote get-url origin')) {
+      return Promise.resolve({
+        command: cmd, code: 0, signal: null, stdout: 'git@github.com:acme/widgets.git\n',
+        stderr: '', timedOut: false, ms: 1, error: null,
+      });
+    }
+    return cmd.includes(scanMarker) ? real(cmd, opts) : fake(cmd, opts);
+  };
 }
 
 const run = async (argv, d = deps()) => {

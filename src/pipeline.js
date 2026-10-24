@@ -81,6 +81,7 @@ export async function run(root, flags = {}, deps = {}) {
     verifyResult = prev.stages.verify.result ?? null;
     state.stages.verify = { ...prev.stages.verify, skipped: 'resumed' };
   } else {
+    const t0 = now(); // pre-stage clock — capturing it at record() time made every duration ~0
     verifyResult = await verify(root, plan, { exec, timeoutMs, skip: flags.noVerify, now });
     if (verifyResult.status === 'ok' || verifyResult.status === 'skipped' || verifyResult.status === 'no-command') {
       record(state, 'verify', {
@@ -89,7 +90,7 @@ export async function run(root, flags = {}, deps = {}) {
         attempts: verifyResult.attempts,
         flaky: verifyResult.flaky,
         result: verifyResult,
-      }, { now, startedAt: now() });
+      }, { now, startedAt: t0 });
       if (verifyResult.flaky) {
         warnings.push('tests passed only on retry (flaky suite) — treat the baseline with suspicion');
       }
@@ -104,7 +105,7 @@ export async function run(root, flags = {}, deps = {}) {
         tests: verifyResult.status,
         verified: false,
         result: verifyResult,
-      }, { now, startedAt: now() });
+      }, { now, startedAt: t0 });
       failure.stage = 'verify';
       failure.message = verifyResult.status === 'timeout'
         ? `test command timed out (phase: ${verifyResult.phase})`
@@ -120,6 +121,7 @@ export async function run(root, flags = {}, deps = {}) {
     mapResult = prev.stages.map.result ?? null;
     state.stages.map = { ...prev.stages.map, skipped: 'resumed' };
   } else {
+    const t0 = now(); // pre-stage clock
     try {
       mapResult = await mapStage(root, { apply, ctxcCli, exec, timeoutMs: Math.min(timeoutMs, 120_000) });
       record(state, 'map', {
@@ -127,13 +129,13 @@ export async function run(root, flags = {}, deps = {}) {
         hotspots: mapResult.hotspots.length,
         entryPoints: mapResult.entryPoints.length,
         result: mapResult,
-      }, { now, startedAt: now() });
+      }, { now, startedAt: t0 });
       // A dry-run intentionally does not execute ctxc; that is not a failure.
       if (mapResult.ctxc && !mapResult.ctxc.ok && !mapResult.ctxc.skipped && ctxcCli) {
         warnings.push(`ctxc build failed (${mapResult.ctxc.error}) — map is heuristic`);
       }
     } catch (err) {
-      recordFailure(state, 'map', { message: String(err?.message ?? err) }, { now, startedAt: now() });
+      recordFailure(state, 'map', { message: String(err?.message ?? err) }, { now, startedAt: t0 });
       failure.stage = 'map';
       failure.message = String(err?.message ?? err);
       return finish();
@@ -145,6 +147,7 @@ export async function run(root, flags = {}, deps = {}) {
     matchResult = prev.stages.match.result ?? null;
     state.stages.match = { ...prev.stages.match, skipped: 'resumed' };
   } else {
+    const t0 = now(); // pre-stage clock
     try {
       matchResult = await matchStage(root, {
         radarCli, exec, timeoutMs: Math.min(timeoutMs, 120_000), env,
@@ -155,12 +158,12 @@ export async function run(root, flags = {}, deps = {}) {
         source: matchResult.source,
         note: matchResult.note,
         result: matchResult,
-      }, { now, startedAt: now() });
+      }, { now, startedAt: t0 });
       if (!matchResult.issue) {
         warnings.push(`no match found — ${matchResult.note}`);
       }
     } catch (err) {
-      recordFailure(state, 'match', { message: String(err?.message ?? err) }, { now, startedAt: now() });
+      recordFailure(state, 'match', { message: String(err?.message ?? err) }, { now, startedAt: t0 });
       failure.stage = 'match';
       failure.message = String(err?.message ?? err);
       return finish();
@@ -172,6 +175,7 @@ export async function run(root, flags = {}, deps = {}) {
     tourResult = prev.stages.tour.result ?? null;
     state.stages.tour = { ...prev.stages.tour, skipped: 'resumed' };
   } else {
+    const t0 = now(); // pre-stage clock
     try {
       tourResult = await buildTour(root, { map: mapResult, match: matchResult, maxSteps: 6 });
       record(state, 'tour', {
@@ -179,12 +183,12 @@ export async function run(root, flags = {}, deps = {}) {
         model: 'none (deterministic)',
         via: tourResult.via,
         result: { steps: tourResult.steps, touched: tourResult.touched, via: tourResult.via, title: tourResult.title },
-      }, { now, startedAt: now() });
+      }, { now, startedAt: t0 });
       if (tourResult.dropped.length > 0) {
         warnings.push(`tour dropped ${tourResult.dropped.length} broken citation(s)`);
       }
     } catch (err) {
-      recordFailure(state, 'tour', { message: String(err?.message ?? err) }, { now, startedAt: now() });
+      recordFailure(state, 'tour', { message: String(err?.message ?? err) }, { now, startedAt: t0 });
       failure.stage = 'tour';
       failure.message = String(err?.message ?? err);
       return finish();

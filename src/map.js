@@ -11,6 +11,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exists, listFiles, readJsonSafe, readText, statOrNull } from './fsx.js';
 
+// Byte-wise (code-unit) order: localeCompare depends on the host ICU/locale,
+// which breaks the deterministic-ordering contract across machines.
+const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
 const CODE_EXT = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs',
   '.java', '.rb', '.php', '.sh', '.c', '.cpp', '.h', '.hpp', '.cs', '.kt', '.swift',
@@ -126,7 +130,7 @@ function topLevelStructure(files) {
     return 'other';
   };
   return [...dirs.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    .sort((a, b) => byStr(a[0], b[0]))
     .map(([dir, files_]) => ({ dir, files: files_, role: roleOf(dir) }));
 }
 
@@ -221,7 +225,7 @@ export async function map(root, opts = {}) {
       const degree = inbound.get(file)?.size ?? 0;
       return { file, loc: lines, importDegree: degree, score: lines * (1 + Math.log2(1 + degree)) };
     })
-    .sort((a, b) => b.score - a.score || a.file.localeCompare(b.file))
+    .sort((a, b) => b.score - a.score || byStr(a.file, b.file))
     .slice(0, 8)
     .map((h) => ({ ...h, score: Math.round(h.score * 100) / 100 }));
 

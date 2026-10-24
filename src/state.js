@@ -39,7 +39,16 @@ export function shouldSkip(prevState, stage) {
 }
 
 export async function loadState(root) {
-  return readJsonSafe(path.join(root, STATE_REL));
+  const loaded = await readJsonSafe(path.join(root, STATE_REL));
+  if (loaded === null || loaded === undefined) return null;
+  // Wrong-shaped state (hand-edited, another tool's file, corrupt-but-valid
+  // JSON) must never be resumed as ours — treat as absent so the run starts
+  // fresh and `status` honestly reports no-state.
+  if (typeof loaded !== 'object' || Array.isArray(loaded)) return null;
+  if (loaded.version !== STATE_VERSION) return null;
+  const stages = loaded.stages;
+  if (typeof stages !== 'object' || stages === null || Array.isArray(stages)) return null;
+  return loaded;
 }
 
 export async function saveState(root, state) {

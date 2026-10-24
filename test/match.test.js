@@ -10,8 +10,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { match } from '../src/match.js';
 import {
-  createRunner,
   fixturePath,
+  radarExec,
   stageFixture,
   tmpdir,
   writeRadarStub,
@@ -66,7 +66,7 @@ test('match: an empty directory is honest none, not a crash', async () => {
 test('match: issue-radar stub offline scan supplies the ranked issue', async () => {
   const root = fixturePath('node-pnpm');
   const stub = writeRadarStub(tmpdir('radar-stubs'), 'ok');
-  const m = await match(root, { radarCli: stub, exec: createRunner() });
+  const m = await match(root, { radarCli: stub, exec: radarExec() });
   assert.equal(m.source, 'issue-radar');
   assert.deepEqual(m.issue, {
     number: 42,
@@ -82,7 +82,7 @@ test('match: issue-radar stub offline scan supplies the ranked issue', async () 
 
 test('match: radar with zero results is an honest none (no fallback invention)', async () => {
   const stub = writeRadarStub(tmpdir('radar-stubs'), 'empty');
-  const m = await match(fixturePath('python-marker'), { radarCli: stub, exec: createRunner() });
+  const m = await match(fixturePath('python-marker'), { radarCli: stub, exec: radarExec() });
   assert.equal(m.source, 'issue-radar');
   assert.equal(m.issue, null);
   assert.deepEqual(m.candidates, []);
@@ -99,7 +99,7 @@ test('match: radar fixture env var drives the scan result', async () => {
   const stub = writeRadarStub(dir, 'ok');
   const m = await match(fixturePath('node-pnpm'), {
     radarCli: stub,
-    exec: createRunner(),
+    exec: radarExec(),
     env: { FIRSTDAY_RADAR_FIXTURE: fixture },
   });
   assert.equal(m.source, 'issue-radar');
@@ -109,7 +109,7 @@ test('match: radar fixture env var drives the scan result', async () => {
 
 test('match: radar crashing falls back to static with the exit code in the note', async () => {
   const stub = writeRadarStub(tmpdir('radar-stubs'), 'fail');
-  const m = await match(fixturePath('node-match'), { radarCli: stub, exec: createRunner() });
+  const m = await match(fixturePath('node-match'), { radarCli: stub, exec: radarExec() });
   assert.equal(m.source, 'static');
   assert.equal(m.issue.kind, 'todo-cluster'); // static fallback still found something
   assert.match(m.note, /issue-radar unavailable \(exit 1\); static fallback/);
@@ -117,7 +117,7 @@ test('match: radar crashing falls back to static with the exit code in the note'
 
 test('match: radar emitting garbage falls back to static', async () => {
   const stub = writeRadarStub(tmpdir('radar-stubs'), 'badjson');
-  const m = await match(fixturePath('python-marker'), { radarCli: stub, exec: createRunner() });
+  const m = await match(fixturePath('python-marker'), { radarCli: stub, exec: radarExec() });
   assert.equal(m.source, 'static');
   assert.equal(m.issue.kind, 'doc-mention');
   assert.match(m.note, /unparseable output; static fallback/);
@@ -125,14 +125,35 @@ test('match: radar emitting garbage falls back to static', async () => {
 
 test('match: radar timing out falls back to static with timeout in the note', async () => {
   const stub = writeRadarStub(tmpdir('radar-stubs'), 'ok');
-  const exec = () => Promise.resolve({
-    command: 'radar', code: null, signal: 'SIGKILL', stdout: '', stderr: '',
-    timedOut: true, ms: 120_000, error: null,
-  });
+  // The git probe answers; only the radar SCAN times out — a slug-less probe
+  // timeout exercises a different (remote-missing) fallback note.
+  const exec = (cmd) => Promise.resolve(
+    cmd.includes('git remote get-url origin')
+      ? {
+          command: cmd, code: 0, signal: null, stdout: 'git@github.com:acme/widgets.git\n',
+          stderr: '', timedOut: false, ms: 1, error: null,
+        }
+      : {
+          command: 'radar', code: null, signal: 'SIGKILL', stdout: '', stderr: '',
+          timedOut: true, ms: 120_000, error: null,
+        },
+  );
   const m = await match(fixturePath('node-match'), { radarCli: stub, exec });
   assert.equal(m.source, 'static');
   assert.equal(m.issue.kind, 'todo-cluster');
   assert.match(m.note, /issue-radar unavailable \(timeout\); static fallback/);
+});
+
+test('match: no git origin remote falls back to static with an honest note', async () => {
+  const stub = writeRadarStub(tmpdir('radar-stubs'), 'ok');
+  const exec = () => Promise.resolve({
+    command: 'git remote get-url origin', code: 1, signal: null, stdout: '', stderr: '',
+    timedOut: false, ms: 1, error: null,
+  });
+  const m = await match(fixturePath('node-match'), { radarCli: stub, exec });
+  assert.equal(m.source, 'static');
+  assert.equal(m.issue.kind, 'todo-cluster');
+  assert.match(m.note, /needs a github origin remote \(none found\); static fallback/);
 });
 
 test('match: TODO clusters are ranked by marker count, capped at 5', async () => {

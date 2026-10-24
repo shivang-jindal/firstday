@@ -148,12 +148,12 @@ node src/cli.js <path> --apply  # writes <path>/.firstday/ (state.json, TOUR.md,
 node src/cli.js <path> --json   # machine-readable report
 node src/cli.js <path> --resume # skip stages recorded ok; rerun the failed one
 node src/cli.js status <path>   # read-only stage table for a previous run
-node --test test/               # 138 tests
+node --test test/               # 139 tests
 ```
 
 ## v0 status
 
-**Shipped, covered by 138 passing tests:**
+**Shipped, covered by 139 passing tests:**
 
 - **Detect**: a toolchain matrix from pure filesystem signals - JS package
   manager (multiple lockfiles detected as ambiguous instead of guessed),

@@ -1,13 +1,20 @@
 // match.js — stage 4: issue matching.
 // If the sibling issue-radar CLI exists, shell out with --offline (and fixture
-// support via FIRSTDAY_RADAR_FIXTURE). Otherwise static fallback: grep docs
-// for "good first issue" mentions + TODO/FIXME clusters -> candidate list with
-// reasons. NEVER fabricates an issue; says "no match found" honestly.
+// support via FIRSTDAY_RADAR_FIXTURE, passed through as radar's --fixture
+// flag). The repo argument is the owner/repo slug from the git origin remote
+// — radar validates owner/repo and rejects filesystem paths. Otherwise static
+// fallback: grep docs for "good first issue" mentions + TODO/FIXME clusters ->
+// candidate list with reasons. NEVER fabricates an issue; says "no match
+// found" honestly.
 import path from 'node:path';
 import { listFiles, readJsonSafe, readText } from './fsx.js';
 
 const DOC_EXT = new Set(['.md', '.mdx', '.txt']);
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.firstday', 'dist', 'build', 'vendor', 'target']);
+
+// Byte-wise (code-unit) order: localeCompare depends on the host ICU/locale,
+// which breaks the deterministic-ordering contract across machines.
+const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 const GOOD_FIRST_RE = /good[\s_-]?first[\s_-]?issue|first[\s_-]?timers?\b|help[\s_-]?wanted/i;
 const MARKER_RE = /\b(TODO|FIXME|XXX|HACK)\b/;
@@ -58,7 +65,7 @@ async function staticScan(root) {
     }
     if (count > 0) markerFiles.push({ f, count, firstLine });
   }
-  markerFiles.sort((a, b) => b.count - a.count || a.f.localeCompare(b.f));
+  markerFiles.sort((a, b) => b.count - a.count || byStr(a.f, b.f));
   for (const m of markerFiles.slice(0, 5)) {
     candidates.push({
       kind: 'todo-cluster',
@@ -74,7 +81,7 @@ async function staticScan(root) {
   candidates.sort((a, b) => {
     const ka = a.kind === 'doc-mention' ? 0 : 1;
     const kb = b.kind === 'doc-mention' ? 0 : 1;
-    return ka - kb || b.score - a.score || a.path.localeCompare(b.path);
+    return ka - kb || b.score - a.score || byStr(a.path, b.path);
   });
   return candidates;
 }
@@ -83,6 +90,25 @@ const CODE_LIKE = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs',
   '.java', '.rb', '.php', '.c', '.cpp', '.h', '.hpp', '.cs',
 ]);
+
+// radar expects `owner/repo` (it validates the slug and rejects filesystem
+// paths) — derive it from the git origin remote; no remote, no radar.
+async function gitRemoteSlug(root, exec, timeoutMs) {
+  try {
+    const r = await exec('git remote get-url origin', {
+      cwd: root,
+      timeoutMs: Math.min(timeoutMs, 10_000),
+      env: {},
+    });
+    if (r.timedOut || r.error || r.code !== 0) return null;
+    const url = String(r.stdout ?? '').trim();
+    // git@github.com:owner/repo.git | https://github.com/owner/repo(.git)
+    const m = url.match(/github\.com[/:]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+    return m ? `${m[1]}/${m[2]}` : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * match(root, { radarCli, exec, timeoutMs, env }) -> MatchResult
@@ -97,9 +123,19 @@ export async function match(root, opts = {}) {
   const { radarCli = null, exec = null, timeoutMs = 120_000, env = {} } = opts;
 
   if (radarCli && exec) {
+    const slug = await gitRemoteSlug(root, exec, timeoutMs);
+    if (!slug) {
+      const candidates = await staticScan(root);
+      return finishStatic(
+        candidates,
+        'issue-radar needs a github origin remote (none found); static fallback',
+      );
+    }
+    // radar's fixture interface is a --fixture <file> flag (it has no env var)
     const fixture = env.FIRSTDAY_RADAR_FIXTURE;
-    const cmd = `"${process.execPath}" "${radarCli}" scan --offline --json "${root}"`;
-    const r = await exec(cmd, { cwd: root, timeoutMs, env: fixture ? { FIRSTDAY_RADAR_FIXTURE: fixture } : {} });
+    const fixtureArg = fixture ? ` --fixture "${fixture}"` : '';
+    const cmd = `"${process.execPath}" "${radarCli}" scan --offline --json${fixtureArg} "${slug}"`;
+    const r = await exec(cmd, { cwd: root, timeoutMs, env: {} });
     if (!r.timedOut && !r.error && r.code === 0) {
       try {
         const data = JSON.parse(r.stdout);
